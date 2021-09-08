@@ -25,13 +25,33 @@
       document.body.appendChild(new Text("Could not load the image."));
     };
 
+    // let currentClick;
+    let interval;
+    let settingMask = false;
+
     class RGB {
-        constructor(r, g, b) {
-            this.r = r;
-            this.g = g;
-            this.b = b;
-        }
+      constructor(r, g, b) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+      }
     };
+    class Point {
+      constructor(x = 0, y = 0) {
+        this.x = x;
+        this.y = y;
+      }
+    }
+
+    let cursor_x = -1;
+    let cursor_y = -1;
+    document.onmousemove = function (event) {
+      cursor_x = event.offsetX;
+      cursor_y = event.offsetY;
+    }
+
+    let layer = { upperLeft:Point, lowerRight:Point };
+
 
     //Called once we have image data
     function main() {
@@ -45,9 +65,11 @@
       //Get the pixels of the canvas
       canvasPixels = ctxStart.getImageData(0, 0, ctxStart.canvas.width, ctxStart.canvas.height)
 
+      mirrorImage();
+    }
+
+    function mirrorImage() {
       let pixels = [];
-
-
       for (let y = 0; y < ctxStart.canvas.height; y++) {
         for (let x = 0; x < ctxStart.canvas.width; x++) {
           //The data is linear, get the x,y coordinate
@@ -60,21 +82,21 @@
             let g = canvasPixels.data[pixelIndex + 1];
             let b = canvasPixels.data[pixelIndex + 2];
 
-            pixels.push(new RGB(r,g,b));
+            pixels.push(new RGB(r, g, b));
             //Trivial grayscale conversion using the red channel
-            g = r;
-            b = r;
+            // g = r;
+            // b = r;
 
-            //Update the pixel data
-            canvasPixels.data[pixelIndex] = r;
-            canvasPixels.data[pixelIndex + 1] = g;
-            canvasPixels.data[pixelIndex + 2] = b;
+            // //Update the pixel data
+            // canvasPixels.data[pixelIndex] = r;
+            // canvasPixels.data[pixelIndex + 1] = g;
+            // canvasPixels.data[pixelIndex + 2] = b;
           }
           else {
-              let pixel = pixels.pop();
-              canvasPixels.data[pixelIndex] = pixel.r;
-              canvasPixels.data[pixelIndex+1] = pixel.g;
-              canvasPixels.data[pixelIndex+2] = pixel.b;
+            let pixel = pixels.pop();
+            canvasPixels.data[pixelIndex] = pixel.r;
+            canvasPixels.data[pixelIndex + 1] = pixel.g;
+            canvasPixels.data[pixelIndex + 2] = pixel.b;
           }
         }
       }
@@ -84,9 +106,31 @@
     }
 
     function getClick(event) {
-        console.log(event.offsetX + ":" + event.offsetY);
-        ctxStart.strokeStyle = "red";
-        ctxStart.strokeRect(10, 10, 100, 100);
+      console.log(event.offsetX + ":" + event.offsetY);
+      if (settingMask) {
+        clearInterval(interval);
+      } else {
+        layer.upperLeft = new Point(event.offsetX, event.offsetY);
+        interval = setInterval(updateRect, 100);
+      }
+      settingMask = !settingMask;
+    }
+
+    function updateRect() {
+      clear();
+      ctxStart.strokeStyle = "red";
+
+      let lrx = cursor_x - layer.upperLeft.x;
+      let lry = cursor_y - layer.upperLeft.y;
+
+      ctxStart.strokeRect(layer.upperLeft.x, layer.upperLeft.y, lrx, lry);
+      layer.lowerRight.x = lrx;
+      layer.lowerRight.y = lry;
+    }
+
+    function clear() {
+      ctxStart.clearRect(0, 0, 320, 480);
+      mirrorImage();
     }
   </script>
 
