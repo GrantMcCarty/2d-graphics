@@ -9,8 +9,10 @@
 <body>
   <div id="app">
     <div>
-      <img src="doggie.jpeg" class="main-image" width="320" height="480">
       <canvas onclick="getClick(event)" id="canv" width="320px" height="480px"></canvas>
+      <button onclick="convertGrayScale()" style="position: absolute; top: 5%; right: 5%;">GrayScale</button>
+      <button onclick="mirrorImage()" style="position: absolute; top: 10%; right: 5%;">Mirror</button>
+      <button onclick="move()" style="position: absolute; top: 15%; right: 5%;">Translate</button>
     </div>
   </div>
 
@@ -24,10 +26,6 @@
     img.onerror = () => {
       document.body.appendChild(new Text("Could not load the image."));
     };
-
-    // let currentClick;
-    let interval;
-    let settingMask = false;
 
     class RGB {
       constructor(r, g, b) {
@@ -43,21 +41,42 @@
       }
     }
 
+    // let currentClick;
+    let interval;
+    let setMask = setRect = false;
+    let ctxStart;
+    let origPos;
+
+    let layer = { upperLeft: Point, lowerRight: Point };
+
     let cursor_x = -1;
     let cursor_y = -1;
-    document.onmousemove = function (event) {
+    let mouseDown = false;
+
+    let canvas = document.getElementById("canv");
+
+    canvas.addEventListener('mousedown', function (e) {
+      mouseDown = !mouseDown;
+    })
+    canvas.addEventListener('mousemove', function (e) {
       cursor_x = event.offsetX;
       cursor_y = event.offsetY;
-    }
-
-    let layer = { upperLeft:Point, lowerRight:Point };
-
+      if (setRect && mouseDown) {
+        if(!origPos) {
+          origPos = new Point(cursor_x, cursor_y);
+        }
+        translate();
+      }
+    })
+    canvas.addEventListener('mouseup', function (e) {
+      mouseDown = !mouseDown;
+    })
 
     //Called once we have image data
     function main() {
 
       //Get the context of the canvas
-      ctxStart = document.getElementById("canv").getContext("2d");
+      ctxStart = canvas.getContext("2d");
 
       //Draw the original image to the canvas
       ctxStart.drawImage(img, 0, 0, 320, 480);
@@ -65,35 +84,46 @@
       //Get the pixels of the canvas
       canvasPixels = ctxStart.getImageData(0, 0, ctxStart.canvas.width, ctxStart.canvas.height)
 
-      mirrorImage();
+      // mirrorImage();
     }
 
     function mirrorImage() {
+
+      let startPos = new Point();
+      let endPos = new Point();
+
+      if (checkLayer()) {
+        startPos.y = layer.upperLeft.y;
+        startPos.x = layer.upperLeft.x;
+
+        endPos.y = layer.lowerRight.y + startPos.y;
+        endPos.x = layer.lowerRight.x + startPos.x;
+      } else {
+        endPos.y = ctxStart.canvas.height;
+        endPos.x = ctxStart.canvas.width;
+      }
+
+      let half = (startPos.x + endPos.x) / 2;
+
       let pixels = [];
-      for (let y = 0; y < ctxStart.canvas.height; y++) {
-        for (let x = 0; x < ctxStart.canvas.width; x++) {
+      for (let y = startPos.y; y < endPos.y; y++) {
+        for (let x = startPos.x; x < endPos.x; x++) {
           //The data is linear, get the x,y coordinate
           //We mulitply by 4 since it is stored as rgba
           let pixelIndex = ctxStart.canvas.width * 4 * y + x * 4;
-
-          //Convert to grayscale on half the image
-          if (x < ctxStart.canvas.width / 2) {
-            let r = canvasPixels.data[pixelIndex];
-            let g = canvasPixels.data[pixelIndex + 1];
-            let b = canvasPixels.data[pixelIndex + 2];
-
-            pixels.push(new RGB(r, g, b));
-            //Trivial grayscale conversion using the red channel
-            // g = r;
-            // b = r;
-
-            // //Update the pixel data
-            // canvasPixels.data[pixelIndex] = r;
-            // canvasPixels.data[pixelIndex + 1] = g;
-            // canvasPixels.data[pixelIndex + 2] = b;
-          }
-          else {
+          
+          if (x < half) {
+            let rgb = new RGB(
+              canvasPixels.data[pixelIndex],
+              canvasPixels.data[pixelIndex + 1],
+              canvasPixels.data[pixelIndex + 2]
+            );
+            pixels.push(rgb);
+          } else {
             let pixel = pixels.pop();
+            if(!pixel) {
+              continue
+            };
             canvasPixels.data[pixelIndex] = pixel.r;
             canvasPixels.data[pixelIndex + 1] = pixel.g;
             canvasPixels.data[pixelIndex + 2] = pixel.b;
@@ -105,32 +135,224 @@
       ctxStart.putImageData(canvasPixels, 0, 0);
     }
 
+    function convertGrayScale() {
+      let startPos = new Point();
+      let endPos = new Point();
+
+      if (checkLayer()) {
+        startPos.y = layer.upperLeft.y;
+        startPos.x = layer.upperLeft.x;
+
+        endPos.y = layer.lowerRight.y + startPos.y;
+        endPos.x = layer.lowerRight.x + startPos.x;
+      } else {
+        endPos.y = ctxStart.canvas.height;
+        endPos.x = ctxStart.canvas.width;
+      }
+
+      for (let y = startPos.y; y < endPos.y; y++) {
+        for (let x = startPos.x; x < endPos.x; x++) {
+          //The data is linear, get the x,y coordinate
+          //We mulitply by 4 since it is stored as rgba
+          let pixelIndex = ctxStart.canvas.width * 4 * y + x * 4;
+          let rgb = new RGB(
+            canvasPixels.data[pixelIndex],
+            canvasPixels.data[pixelIndex + 1],
+            canvasPixels.data[pixelIndex + 2]
+          );
+          //Grayscale = 0.299R + 0.587G + 0.114B
+          let avg = (0.299 * rgb.r) + (0.587 * rgb.g) + (0.114 * rgb.b);
+          rgb.r = avg;
+          rgb.g = avg;
+          rgb.b = avg;
+
+          //Update the pixel data
+          canvasPixels.data[pixelIndex] = rgb.r;
+          canvasPixels.data[pixelIndex + 1] = rgb.g;
+          canvasPixels.data[pixelIndex + 2] = rgb.b;
+        }
+      }
+
+      //Set the pixel data
+      ctxStart.putImageData(canvasPixels, 0, 0);
+    }
+
+    function move() {
+      let moveX = 50;
+      let moveY = 50;
+      let map = new Map();
+      for (let y = 0; y < ctxStart.canvas.height/2; y++) {
+        for (let x = 0; x < ctxStart.canvas.width/2; x++) {
+          let origX = x - moveX;
+          let origY = y - moveY;
+
+          if(origX<0 || origX > ctxStart.canvas.width || origY < 0 || origY > ctxStart.canvas.height)
+            continue;
+
+          let orgIndex = ctxStart.canvas.width * 4 * origX + origY * 4;
+          let pixelIndex = ctxStart.canvas.width * 4 * x + y * 4;
+
+          map.set(orgIndex, canvasPixels.data[pixelIndex]);
+          map.set(orgIndex+1, canvasPixels.data[pixelIndex+1]);
+          map.set(orgIndex+2, canvasPixels.data[pixelIndex+2]);
+        }
+      }
+
+      const iterator1 = map[Symbol.iterator]();
+      for (const item of iterator1) {
+        canvasPixels.data[item[0]] = item[1];
+      }
+
+      //Set the pixel data
+      ctxStart.putImageData(canvasPixels, 0, 0);
+    }
+
+    function translate() {
+      let addX = cursor_x - origPos.x;
+      let addY = cursor_y - origPos.y;
+      
+      let origUL = new Point(layer.upperLeft.x, layer.upperLeft.y);
+      let origLR = new Point(layer.lowerRight.x, layer.lowerRight.y);
+
+      layer.upperLeft.x += addX 
+      layer.upperLeft.y += addY 
+      layer.lowerRight.x += addX;
+      layer.lowerRight.y += addY;
+      
+      clear();
+
+      let startPos = new Point();
+      let endPos = new Point();
+
+      if (origUL && origLR) {
+        // startPos.y = origUL.y;
+        // startPos.x = origUL.x;
+
+        // endPos.y = origLR.y+startPos.y;
+        // endPos.x = origLR.x+startPos.x;
+        startPos.y = layer.upperLeft.y;
+        startPos.x = layer.upperLeft.x;
+
+        endPos.y = layer.lowerRight.y + startPos.y;
+        endPos.x = layer.lowerRight.x + startPos.x;
+      }
+
+      let map = new Map();
+
+      for (let y = startPos.y; y < endPos.y; y++) {
+        for (let x = startPos.x; x < endPos.x; x++) {
+          let origX = x -addX;
+          let origY = y -addY;
+
+          // let pixelIndex = ctxStart.canvas.width * 4 * y + x * 4;
+          // let rgb = new RGB(
+          //   canvasPixels.data[pixelIndex],
+          //   canvasPixels.data[pixelIndex + 1],
+          //   canvasPixels.data[pixelIndex + 2]
+          // );
+
+          // pixelIndex = ctxStart.canvas.width * 4 * origy + origx * 4;
+          // //Update the pixel data
+          // canvasPixels.data[pixelIndex] = rgb.r;
+          // canvasPixels.data[pixelIndex + 1] = rgb.g;
+          // canvasPixels.data[pixelIndex + 2] = rgb.b;
+          if(origX<0 || origX > ctxStart.canvas.width || origY < 0 || origY > ctxStart.canvas.height)
+            continue;
+
+          let orgIndex = ctxStart.canvas.width * 4 * origX + origY * 4;
+          let pixelIndex = ctxStart.canvas.width * 4 * x + y * 4;
+
+          map.set(orgIndex, canvasPixels.data[pixelIndex]);
+          map.set(orgIndex+1, canvasPixels.data[pixelIndex+1]);
+          map.set(orgIndex+2, canvasPixels.data[pixelIndex+2]);
+        }
+      }
+
+      const iterator1 = map[Symbol.iterator]();
+      for (const item of iterator1) {
+        canvasPixels.data[item[0]] = item[1];
+      }
+
+      //Set the pixel data
+      ctxStart.putImageData(canvasPixels, 0, 0);
+
+      ctxStart.strokeStyle = "red";
+      ctxStart.strokeRect(layer.upperLeft.x, layer.upperLeft.y,
+        layer.lowerRight.x, layer.lowerRight.y);
+
+      origPos = new Point(cursor_x, cursor_y);
+    }
+
+    function setLayer(x, y) {
+      layer.upperLeft.x = x;
+      layer.upperLeft.y = y;
+      layer.lowerRight.x = cursor_x - layer.upperLeft.x;
+      layer.lowerRight.y = cursor_y - layer.upperLeft.y;
+      return layer;
+    }
+
+    function checkLayer() {
+      return layer
+        && layer.upperLeft.x != undefined && layer.upperLeft.y != undefined
+        && layer.lowerRight.x != undefined && layer.lowerRight.y != undefined
+    }
+
     function getClick(event) {
-      console.log(event.offsetX + ":" + event.offsetY);
-      if (settingMask) {
+      if (setRect) {
+        origPos = new Point(cursor_x, cursor_y);
+        return;
+      }
+      if (setMask) {
         clearInterval(interval);
+        setRect = true;
       } else {
         layer.upperLeft = new Point(event.offsetX, event.offsetY);
         interval = setInterval(updateRect, 100);
       }
-      settingMask = !settingMask;
+      setMask = !setMask;
     }
 
     function updateRect() {
       clear();
       ctxStart.strokeStyle = "red";
-
-      let lrx = cursor_x - layer.upperLeft.x;
-      let lry = cursor_y - layer.upperLeft.y;
-
-      ctxStart.strokeRect(layer.upperLeft.x, layer.upperLeft.y, lrx, lry);
-      layer.lowerRight.x = lrx;
-      layer.lowerRight.y = lry;
+      layer.lowerRight = new Point(cursor_x - layer.upperLeft.x, cursor_y - layer.upperLeft.y);
+      ctxStart.strokeRect(layer.upperLeft.x, layer.upperLeft.y,
+        layer.lowerRight.x, layer.lowerRight.y);
     }
 
     function clear() {
       ctxStart.clearRect(0, 0, 320, 480);
-      mirrorImage();
+      ctxStart.drawImage(img, 0, 0, 320, 480);
+      // mirrorImage();
+    }
+
+    function RGBtoHSV(r, g, b) {
+      let hue = saturation = value = -1;
+
+      let red = r / 255;
+      let green = g / 255;
+      let blue = b / 255;
+
+      value = Math.max(red, green, blue);
+      let delta = value - min;
+      if (value == 0) {
+        hue = saturation = 0;
+      } else {
+        let min = Math.min(red, green, blue);
+
+
+        saturation = value == 0 ? 0 : delta / value;
+
+        if (value == red)
+          hue = (60 * (green - blue) / delta) % 360;
+        else if (value == green)
+          hue = (60 * (blue - red) / delta + 120) % 360;
+        else if (value == blue)
+          hue = (60 * (red - green) / delta + 240) % 360;
+
+        hue /= 360;
+      }
+      return [hue, saturation, value];
     }
   </script>
 
